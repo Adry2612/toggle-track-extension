@@ -1,0 +1,64 @@
+{
+  "name": "toggl-track-extension",
+  "displayName": "toggl-track-extension",
+  "description": "",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.118.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "main": "./out/extension.js",
+  "icon": "resources/toggl.png",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "toggl",
+          "title": "Toggl",
+          "icon": "resources/toggl.svg"
+        }
+      ]
+    },
+    "views": {
+      "toggl": [
+        {
+          "id": "toggl-sidebar",
+          "name": "Toggl Track",
+          "icon": "resources/toggl.svg",
+          "type": "webview"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "toggl.openPanel",
+        "title": "Open Panel"
+      },
+      {
+        "command": "toggl.openSidebarPanel",
+        "title": "Open Sidebar"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile && npm run lint",
+    "lint": "eslint src",
+    "test": "vscode-test"
+  },
+  "devDependencies": {
+    "@types/mocha": "^10.0.10",
+    "@types/node": "^22.19.17",
+    "@types/vscode": "^1.118.0",
+    "@vscode/test-cli": "^0.0.12",
+    "@vscode/test-electron": "^2.5.2",
+    "eslint": "^9.39.3",
+    "mocha": "^11.7.5",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.56.1"
+  }
+}
