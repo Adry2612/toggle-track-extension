@@ -3,6 +3,14 @@ import { TogglApiClient } from './togglApi';
 import { StatusBarController } from './statusBar';
 import { getSidebarHtml } from './webview/sidebarHtml';
 
+interface PlannedBlock {
+  id: string;
+  description: string;
+  start: string;
+  stop: string;
+  project_id: number | null;
+}
+
 export class TogglSidebarProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'toggl-sidebar';
 
@@ -106,7 +114,13 @@ export class TogglSidebarProvider implements vscode.WebviewViewProvider {
               tagIds: Array.isArray(message.tag_ids) && message.tag_ids.length > 0 ? message.tag_ids : undefined,
             });
             this.statusBar.start(entry.start, desc);
-            webviewView.webview.postMessage({ command: 'timerStarted', entryId: entry.id, start: entry.start, description: desc });
+            webviewView.webview.postMessage({
+              command: 'timerStarted',
+              entryId: entry.id,
+              start: entry.start,
+              description: desc,
+              projectId: message.project_id ?? null,
+            });
           } catch (err: unknown) {
             const msg = err instanceof Error ? err.message : 'Error al iniciar el timer.';
             webviewView.webview.postMessage({ command: 'timerError', text: msg });
@@ -193,6 +207,80 @@ export class TogglSidebarProvider implements vscode.WebviewViewProvider {
             const msg = err instanceof Error ? err.message : String(err);
             webviewView.webview.postMessage({ command: 'editError', text: msg });
           }
+          break;
+        }
+
+        case 'loadPlannedBlocks': {
+          const token = await this.context.secrets.get('togglApiToken');
+          if (!token) { return; }
+          const workspaceId = await this.api.getWorkspaceId(token);
+          if (!workspaceId) {
+            webviewView.webview.postMessage({ command: 'plannedBlocksError', text: 'No se pudo obtener el workspace.' });
+            return;
+          }
+          const plannedBlocks = this.context.globalState.get<PlannedBlock[]>(`plannedBlocks.${workspaceId}`, []);
+          webviewView.webview.postMessage({ command: 'plannedBlocksLoaded', plannedBlocks });
+          break;
+        }
+
+        case 'savePlannedBlock': {
+          const token = await this.context.secrets.get('togglApiToken');
+          if (!token) { return; }
+          const workspaceId = await this.api.getWorkspaceId(token);
+          if (!workspaceId) {
+            webviewView.webview.postMessage({ command: 'plannedBlockError', text: 'No se pudo obtener el workspace.' });
+            return;
+          }
+          const description = String(message.description ?? '').trim();
+          const start = String(message.start ?? '');
+          const stop = String(message.stop ?? '');
+          const startMs = Date.parse(start);
+          const stopMs = Date.parse(stop);
+          if (!description || !Number.isFinite(startMs) || !Number.isFinite(stopMs) || stopMs <= startMs) {
+            webviewView.webview.postMessage({ command: 'plannedBlockError', text: 'Indica un nombre y un intervalo horario válido.' });
+            return;
+          }
+          const projectId = Number(message.project_id);
+          const block: PlannedBlock = {
+            id: String(message.id || `${Date.now()}-${Math.random().toString(36).slice(2)}`),
+            description,
+            start: new Date(startMs).toISOString(),
+            stop: new Date(stopMs).toISOString(),
+            project_id: Number.isSafeInteger(projectId) && projectId > 0 ? projectId : null,
+          };
+          const key = `plannedBlocks.${workspaceId}`;
+          const plannedBlocks = this.context.globalState.get<PlannedBlock[]>(key, []);
+          const updatedBlocks = [...plannedBlocks.filter(item => item.id !== block.id), block];
+          try {
+            await this.context.globalState.update(key, updatedBlocks);
+          } catch (err: unknown) {
+            const text = err instanceof Error ? err.message : 'No se pudo guardar el bloque planificado.';
+            webviewView.webview.postMessage({ command: 'plannedBlockError', text });
+            return;
+          }
+          webviewView.webview.postMessage({ command: 'plannedBlockSaved', plannedBlock: block, plannedBlocks: updatedBlocks });
+          break;
+        }
+
+        case 'deletePlannedBlock': {
+          const token = await this.context.secrets.get('togglApiToken');
+          if (!token) { return; }
+          const workspaceId = await this.api.getWorkspaceId(token);
+          if (!workspaceId) {
+            webviewView.webview.postMessage({ command: 'plannedBlockError', text: 'No se pudo obtener el workspace.' });
+            return;
+          }
+          const key = `plannedBlocks.${workspaceId}`;
+          const plannedBlocks = this.context.globalState.get<PlannedBlock[]>(key, []);
+          const updatedBlocks = plannedBlocks.filter(item => item.id !== String(message.id));
+          try {
+            await this.context.globalState.update(key, updatedBlocks);
+          } catch (err: unknown) {
+            const text = err instanceof Error ? err.message : 'No se pudo eliminar el bloque planificado.';
+            webviewView.webview.postMessage({ command: 'plannedBlockError', text });
+            return;
+          }
+          webviewView.webview.postMessage({ command: 'plannedBlockDeleted', plannedBlocks: updatedBlocks });
           break;
         }
 
